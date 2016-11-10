@@ -1,0 +1,26 @@
+### Starting build.
+# Target: moogle.ml.depends, tags: { extension:ml, file:moogle.ml, ocaml, ocamldep, quiet }
+/home/jackey/.opam/4.02.1/bin/ocamldep.opt -modules moogle.ml > moogle.ml.depends # cached
+# Target: crawl.ml.depends, tags: { extension:ml, file:crawl.ml, ocaml, ocamldep, quiet }
+/home/jackey/.opam/4.02.1/bin/ocamldep.opt -modules crawl.ml > crawl.ml.depends # cached
+# Target: dict.ml.depends, tags: { extension:ml, file:dict.ml, ocaml, ocamldep, quiet }
+/home/jackey/.opam/4.02.1/bin/ocamldep.opt -modules dict.ml > dict.ml.depends # cached
+# Target: order.ml.depends, tags: { extension:ml, file:order.ml, ocaml, ocamldep, quiet }
+/home/jackey/.opam/4.02.1/bin/ocamldep.opt -modules order.ml > order.ml.depends # cached
+# Target: order.cmo, tags: { byte, compile, extension:cmo, extension:ml, file:order.cmo, file:order.ml, implem, ocaml, quiet }
+/home/jackey/.opam/4.02.1/bin/ocamlc.opt -c -o order.cmo order.ml # cached
+# Target: dict.cmo, tags: { byte, compile, extension:cmo, extension:ml, file:dict.cmo, file:dict.ml, implem, ocaml, quiet }
+/home/jackey/.opam/4.02.1/bin/ocamlc.opt -c -o dict.cmo dict.ml # cached
+# Target: pagerank.ml.depends, tags: { extension:ml, file:pagerank.ml, ocaml, ocamldep, quiet }
+/home/jackey/.opam/4.02.1/bin/ocamldep.opt -modules pagerank.ml > pagerank.ml.depends # cached
+# Target: graph.ml.depends, tags: { extension:ml, file:graph.ml, ocaml, ocamldep, quiet }
+/home/jackey/.opam/4.02.1/bin/ocamldep.opt -modules graph.ml > graph.ml.depends # cached
+# Target: myset.ml.depends, tags: { extension:ml, file:myset.ml, ocaml, ocamldep, quiet }
+/home/jackey/.opam/4.02.1/bin/ocamldep.opt -modules myset.ml > myset.ml.depends
+# Target: myset.cmo, tags: { byte, compile, extension:cmo, extension:ml, file:myset.cmo, file:myset.ml, implem, ocaml, quiet }
+/home/jackey/.opam/4.02.1/bin/ocamlc.opt -c -o myset.cmo myset.ml
++ /home/jackey/.opam/4.02.1/bin/ocamlc.opt -c -o myset.cmo myset.ml
+File "myset.ml", line 326, characters 26-38:
+Error: Unbound value D.gen_key_gt
+Command exited with code 2.
+# Compilation unsuccessful.
