@@ -1,1 +1,1 @@
-crawl.ml: CrawlerServices Dict InDegreeRanker LinkSet List Order PageGraph PageScore Pagerank Printf Query String Util
+crawl.ml: CrawlerServices Dict LinkSet List Order PageGraph PageScore Pagerank Printf Query RandomWalkRanker String Util

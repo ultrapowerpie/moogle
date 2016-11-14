@@ -240,26 +240,27 @@ struct
       (* Use these functions for testing. See TESTING EXPLANATION. *)
 
       (* Generate a key. The same key is always returned *)
-      let gen_key  = C.gen
+      let gen_key () = C.gen ()
 
       (* Generate a random key. *)
-      let gen_key_random  = C.gen_random
+      let gen_key_random () = C.gen_random ()
 
       (* Generates a key greater than the argument. *)
-      let gen_key_gt = C.gen_gt
+      let gen_key_gt (k:key) () = C.gen_gt k ()
 
       (* Generates a key less than the argument. *)
-      let gen_key_lt = C.gen_lt
+      let gen_key_lt (k:key) () = C.gen_lt k ()
 
       (* Generates a key between the two arguments. Return None if no such
        * key exists. *)
-      let gen_key_between = C.gen_between
+      let gen_key_between (small:key) (big:key) () =
+        C.gen_between small big ()
 
       (* Generates a random value. *)
-      let gen_value = fun x -> true
+      let gen_value () = true
 
       (* Generates a random (key,value) pair *)
-      let gen_pair = fun x -> (gen_key_random (), true)
+      let gen_pair () = (gen_key_random (), true)
   end)
 
   type elt = D.key
@@ -293,16 +294,16 @@ struct
    * and returns that element plus the new set.
    * If the set is empty, returns None. *)
   let choose (s:set) : (elt * set) option =
-  match D.choose s with
-    None -> None
-  | Some (k,v,s) -> Some (k,s)
+    match D.choose s with
+      None -> None
+    | Some (k,v,s) -> Some (k,s)
 
   (* fold a function across the elements of the set
    * in some unspecified order. *)
   let rec fold (f:elt -> 'a -> 'a) (u:'a) (s:set) : 'a =
-  match D.choose s with
-    None -> u
-  | Some (k,v,s) -> fold f (f k u) s
+    match D.choose s with
+      None -> u
+    | Some (k,v,s) -> fold f (f k u) s
 
   (* functions to convert our types to a string. useful for debugging. *)
   let string_of_set (s:set) : string = D.string_of_dict s
@@ -319,63 +320,106 @@ struct
     List.fold_right (fun e s -> insert e s) lst s
 
   (* generates an elt list with n distinct keys in increasing order *)
-  let generate_pair_list (size: int) : elt list =
+  let generate_elt_list (size: int) : elt list =
     let rec helper (size: int) (current: elt) : elt list =
       if size <= 0 then []
       else
-        let new_current = D.gen_key_gt current () in
+        let new_current = (C.gen_gt current ()) in
         new_current :: (helper (size - 1) new_current)
     in
-    helper size (D.gen_key ())
+    helper size (C.gen ())
 
-  (* generates a (key,value) list with keys in random order *)
-  let rec generate_random_list (size: int) : (key * value) list =
+  (* generates an elt list with keys in random order *)
+  let rec generate_random_list (size: int) : elt list =
     if size <= 0 then []
-    else
-      (D.gen_key_random (), D.gen_value()) :: (generate_random_list (size - 1))
+    else (C.gen_random()) :: (generate_random_list (size - 1))
 
   let test_insert () =
-    let pairs1 = generate_pair_list 26 in
-    let d1 = insert_list empty pairs1 in
-    List.iter (fun (k,v) -> assert(lookup d1 k = Some v)) pairs1 ;
+    let elts = generate_random_list 100 in
+    let s1 = insert_list empty elts in
+    List.iter (fun k -> assert(member s1 k)) elts ;
     ()
 
   let test_remove () =
-    let pairs1 = generate_pair_list 26 in
-    let d1 = insert_list empty pairs1 in
-    List.iter
-      (fun (k,v) ->
-        let r = remove d1 k in
-        List.iter
-          (fun (k2,v2) ->
-            if k = k2 then assert(lookup r k2 = None)
-            else assert(lookup r k2 = Some v2)
-          ) pairs1
-      ) pairs1 ;
-    ()
-
-  let test_lookup () =
+    let elts = generate_random_list 100 in
+    let s1 = insert_list empty elts in
+    let s2 = List.fold_right (fun k r -> remove k r) elts s1 in
+    List.iter (fun k -> assert(not (member s2 k))) elts ;
     ()
 
   let test_choose () =
+    let rec check_elt_set (s:set) : unit =
+      match choose s with
+        None -> assert(is_empty s) ;
+      | Some (e,s1) -> assert(member s e);
+                       assert(not (member s1 e));
+                       check_elt_set s1
+    in
+    let elts = generate_random_list 100 in
+    let s1 = insert_list empty elts in
+    check_elt_set s1 ;
     ()
 
   let test_member () =
+    test_insert();
+    test_remove();
     ()
 
   let test_fold () =
+    let s0 = empty in
+    let elts = generate_random_list 100 in
+    let s1 = insert_list empty elts in
+    assert((fold (fun k i -> 1) 0 s0) = 0);
+    assert ((fold (fun k i -> i+1) 0 s1) = 100);
     ()
 
+  let test_union () =
+    let elts1 = generate_random_list 100 in
+    let s1 = insert_list empty elts1 in
+    let elts2 = generate_random_list 100 in
+    let s2 = insert_list empty elts2 in
+    let s12 = insert_list s1 elts2 in
+    assert((union s1 s2) = s12);
+    ()
+
+  let test_intersect () =
+    let elts1 = generate_random_list 100 in
+    let s1 = insert_list empty elts1 in
+    let elts2 = generate_random_list 100 in
+    let s2 = insert_list empty elts2 in
+    let list_set = List.fold_left
+      (fun s e -> if List.mem e elts1 then insert e s else s) empty elts2 in
+    assert((intersect s1 s2) = list_set);
+    ()
+
+  let test_is_empty () =
+    let elts = generate_random_list 100 in
+    let s1 = insert_list empty elts in
+    assert(is_empty empty);
+    assert(not (is_empty s1));
+    ()
+
+  let test_singleton () =
+    let e = C.gen_random() in
+    let s1 = singleton e in
+    match choose s1 with
+      None -> assert(false);
+    | Some (e, s0) -> assert(is_empty s0);
+    assert(member s1 e) ;
+    ()
 
 
   (* runs our tests. See TESTING EXPLANATION *)
   let run_tests () =
     test_insert() ;
     test_remove() ;
-    test_lookup() ;
     test_choose() ;
     test_member() ;
     test_fold() ;
+    test_union();
+    test_intersect();
+    test_is_empty();
+    test_singleton();
     ()
 
   (* implement the rest of the functions in the signature! *)
@@ -422,5 +466,5 @@ IntDictSet.run_tests();;
 module Make(C : COMPARABLE) : (SET with type elt = C.t) =
   (* Change this line to use our dictionary implementation when your are
    * finished. *)
-  ListSet (C)
-  (* DictSet (C) *)
+  (* ListSet (C) *)
+  DictSet (C)

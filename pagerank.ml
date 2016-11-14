@@ -1,4 +1,4 @@
-open Util ;;    
+open Util ;;
 open CrawlerServices ;;
 open Order ;;
 open Nodescore ;;
@@ -7,7 +7,7 @@ open Graph ;;
 
 (* Dictionaries mapping links to their ranks. Higher is better. *)
 module RankDict = Dict.Make(
-  struct 
+  struct
     type key = link
     type value = float
     let compare = link_compare
@@ -23,7 +23,7 @@ module RankDict = Dict.Make(
   end)
 
 module PageSet = Myset.Make(
-  struct 
+  struct
     type t = page
     let compare = (fun a b -> link_compare (a.url) (b.url))
     let string_of_t = string_of_page
@@ -35,7 +35,7 @@ module PageSet = Myset.Make(
   end)
 
 module LinkSet = Myset.Make(
-  struct 
+  struct
     type t = link
     let compare = link_compare
     let string_of_t = string_of_link
@@ -65,28 +65,28 @@ module PageScore = NodeScore (
 (* Given a bunch of pages, convert them to a graph *)
 let graph_of_pages (pages : PageSet.set) : PageGraph.graph =
   (* Only want graph nodes for pages we actually crawled *)
-  let crawled_links = 
+  let crawled_links =
     PageSet.fold (fun page s -> LinkSet.insert page.url s)
-      LinkSet.empty pages 
+      LinkSet.empty pages
   in
   let add_links page graph =
     let add_link g dst =
       if LinkSet.member crawled_links dst then
         PageGraph.add_edge g page.url dst
-      else g 
+      else g
     in
       List.fold_left add_link graph page.links
   in
     PageSet.fold add_links PageGraph.empty pages
-      
+
 (* The rest of the world wants a RankDict, not a NodeScore. *)
 
 let dict_of_ns (ns : PageScore.node_score_map) : RankDict.dict =
-  PageScore.fold (fun node score r -> RankDict.insert r node score) 
+  PageScore.fold (fun node score r -> RankDict.insert r node score)
     RankDict.empty ns
 
 (* A type for modules that can compute nodescores from graphs *)
-module type RANKER = 
+module type RANKER =
 sig
   module G: GRAPH
   module NS: NODE_SCORE
@@ -95,19 +95,19 @@ end
 
 
 (* Each node's rank is equal to the number of pages that link to it. *)
-module InDegreeRanker  (GA: GRAPH) (NSA: NODE_SCORE with module N = GA.N) : 
+module InDegreeRanker  (GA: GRAPH) (NSA: NODE_SCORE with module N = GA.N) :
   (RANKER with module G = GA with module NS = NSA) =
 struct
   module G = GA
   module NS = NSA
-  let rank (g : G.graph) = 
+  let rank (g : G.graph) =
     let add_node_edges ns node =
       let neighbors = match G.neighbors g node with
         | None -> []
         | Some xs -> xs
       in
-        List.fold_left (fun ns' neighbor -> NS.add_score ns' neighbor 1.0) 
-          ns neighbors 
+        List.fold_left (fun ns' neighbor -> NS.add_score ns' neighbor 1.0)
+          ns neighbors
     in
     let nodes = (G.nodes g) in
       List.fold_left add_node_edges (NS.zero_node_score_map nodes) nodes
@@ -118,40 +118,84 @@ end
 (*****************************************************************)
 (* Random Walk Ranker                                            *)
 (*****************************************************************)
-(*
 
 module type WALK_PARAMS =
 sig
-  (* Should we randomly jump somewhere else occasionally? 
-    if no, this should be None.  Else it should be the probability of 
+  (* Should we randomly jump somewhere else occasionally?
+    if no, this should be None.  Else it should be the probability of
     jumping on each step *)
   val do_random_jumps : float option
   (* How far must sisyphus walk? *)
   val num_steps : int
 end
 
-module RandomWalkRanker (GA: GRAPH) (NSA: NODE_SCORE with module N = GA.N) 
-  (P : WALK_PARAMS) : 
+exception NOT_IN_GRAPH;;
+exception NEIGHBORS_DEAD;;
+exception EMPTY_GRAPH;;
+
+module RandomWalkRanker (GA: GRAPH) (NSA: NODE_SCORE with module N = GA.N)
+  (P : WALK_PARAMS) :
   (RANKER with module G = GA with module NS = NSA) =
 struct
   module G = GA
   module NS = NSA
 
   (* TODO - fill this in*)
-end
-*)
+  let rank (g:G.graph) =
+    let rand_elt (l:'a list) : 'a option =
+      match l with
+        [] -> None
+      | _ -> let r = Random.int (List.length l) in
+          let  i,e = (List.fold_left (fun (i,v) e ->
+              if i = r then (i+1, e) else ((i+1), v)) (0, List.hd l) l)
+          in
+          Some e
+    in
+    let rec walk (nsm:NS.node_score_map) (steps:int)
+        (node:NS.node) : NS.node_score_map =
+      let rand_jump (nsm:NS.node_score_map) (steps:int) : NS.node_score_map =
+        match rand_elt (G.nodes g) with
+            None -> raise EMPTY_GRAPH
+          | Some n -> walk (NS.add_score nsm n 1.0) (steps+1) n
+      in
+      let visit_neighbor (nsm:NS.node_score_map) (steps:int)
+        (node:NS.node) : NS.node_score_map =
+        match G.neighbors g node with
+          None -> raise NOT_IN_GRAPH
+        | Some l ->
+          match rand_elt l with
+            Some n -> walk (NS.add_score nsm n 1.0) (steps+1) n
+          | None -> rand_jump nsm steps
+      in
+      match steps = P.num_steps with
+        true -> nsm
+      | false ->
+        match P.do_random_jumps with
+          None -> visit_neighbor nsm steps node
+        | Some p -> if Random.float 1.0 < p then rand_jump nsm steps
+                    else visit_neighbor nsm steps node
+    in
+    match rand_elt (G.nodes g) with
+      None -> raise EMPTY_GRAPH
+    | Some start ->
+      let scores = NS.normalize
+        (walk (NS.zero_node_score_map (G.nodes g)) 0 start)
+      in
+      (* print_string (NS.string_of_node_score_map scores); *)
+      scores
 
+end
 
 (*******************  TESTS BELOW  *******************)
 
 module TestInDegreeRanker =
-struct 
+struct
   module G = NamedGraph
   let g = G.add_edge G.empty "a" "b";;
   let g2 = G.add_edge g "a" "c";;
-  
+
   module NS = NodeScore (struct
-                           type node = string 
+                           type node = string
                            let compare = string_compare
                            let string_of_node = fun x -> x
                            let gen () = ""
@@ -173,37 +217,34 @@ struct
 
 end
 
-(*
+
 module TestRandomWalkRanker =
-struct 
+struct
   module G = NamedGraph
-  let g = G.from_edges [("a","b") ; 
+  let g = G.from_edges [("a","b") ;
                         ("b","c") ;
                         ("c","d") ;
                         ("d","e") ;
                         ("e","f") ;
                         ("a","g") ;
                         ("g","a")]
-  
+
   module NS = NodeScore (struct
-                           type node = string 
+                           type node = string
                            let compare = string_compare
                            let string_of_node = fun x -> x
                            let gen () = ""
                          end);;
 
-  module Ranker = RandomWalkRanker (G) (NS) 
-    (struct 
+  module Ranker = RandomWalkRanker (G) (NS)
+    (struct
        let do_random_jumps = None
        let num_steps = 1000
      end)
 
   let ns = Ranker.rank g
-  (*let _ = Printf.printf "Testing RandomWalkRanker:\n NS: %s\n" 
-    (NS.string_of_node_score_map ns) 
-  *)
+  let _ = Printf.printf "Testing RandomWalkRanker:\n NS: %s\n"
+    (NS.string_of_node_score_map ns)
+
 (* That's the problem with randomness -- hard to test *)
 end
-*)
-
-

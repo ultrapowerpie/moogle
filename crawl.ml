@@ -6,13 +6,13 @@ open Pagerank ;;
 
 
 module MoogleRanker
-  = InDegreeRanker (PageGraph) (PageScore)
-  (*
+  (* = InDegreeRanker (PageGraph) (PageScore) *)
+
      = RandomWalkRanker (PageGraph) (PageScore) (struct
        let do_random_jumps = Some 0.20
-       let num_steps = 1000
+       let num_steps = 10000
      end)
-  *)
+
 
 (* Dictionaries mapping words (strings) to sets of crawler links *)
 module WordDict = Dict.Make(
@@ -67,11 +67,11 @@ let rec crawl (n:int) (frontier: LinkSet.set)
       [] -> d
     | hd::tl ->
       let hd = String.lowercase hd in
+      (* print hd; *)
       match WordDict.lookup d hd with
         None -> insert_dict tl l (WordDict.insert d hd (LinkSet.singleton l))
       | Some s -> insert_dict tl l (WordDict.insert d hd (LinkSet.insert l s))
   in
-  print (string_of_int n);
   (* if size of the visited set = n, maximum # of links have been reached *)
   match LinkSet.fold (fun x i -> i+1) 0 visited == n with
     true -> d
@@ -85,11 +85,11 @@ let rec crawl (n:int) (frontier: LinkSet.set)
       | true -> crawl n frontier visited d
       | false ->
       (* add the link to the visited set *)
-        let visited = LinkSet.insert l visited in
         match CrawlerServices.get_page l with
         | None -> crawl n frontier visited d
         | Some p ->
         (* add the links on the new page to the frontier *)
+          let visited = LinkSet.insert l visited in
           let frontier = List.fold_left (fun s e -> LinkSet.insert e s)
             frontier p.links in
           crawl n frontier visited (insert_dict p.words l d)

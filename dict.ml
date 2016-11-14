@@ -4,21 +4,26 @@
  * a set of URLs with each word that we find as we crawl the web.
  *)
 exception TODO
+exception BAD_INSERT_UP_TWO
+exception BAD_INSERT_UP_THREE
+exception BAD_INSERT_DOWN
+exception BAD_INSERT_DOWN_TWO
+exception BAD_INSERT_DOWN_THREE
 
-module type DICT = 
+module type DICT =
 sig
-  type key   
-  type value 
+  type key
+  type value
   type dict
 
   (* An empty dictionary *)
-  val empty : dict 
+  val empty : dict
 
-  (* Reduce the dictionary using the provided function f and base case u. 
+  (* Reduce the dictionary using the provided function f and base case u.
    * Our reducing function f must have the type:
    *      key -> value -> 'a -> 'a
    * and our base case u has type 'a.
-   * 
+   *
    * If our dictionary is the (key,value) pairs (in any order)
    *      (k1,v1), (k2,v2), (k3,v3), ... (kn,vn)
    * then fold should return:
@@ -105,7 +110,7 @@ struct
   let gen_key () = 0
   let gen_key_gt x () = x + 1
   let gen_key_lt x () = x - 1
-  let gen_key_between x y () = 
+  let gen_key_between x y () =
     let (lower, higher) = (min x y, max x y) in
     if higher - lower < 2 then None else Some (higher - 1)
   let gen_key_random =
@@ -138,7 +143,7 @@ end
 
 (* An association list implementation of our DICT signature. *)
 module AssocListDict(D:DICT_ARG) : (DICT with type key = D.key
-  with type value = D.value) = 
+  with type value = D.value) =
 struct
   open Order;;
   type key = D.key;;
@@ -149,49 +154,49 @@ struct
 
   let empty = [] ;;
 
-  let fold f d = List.fold_left (fun a (k,v) -> f k v a) d 
+  let fold f d = List.fold_left (fun a (k,v) -> f k v a) d
 
-  let rec lookup d k = 
-    match d with 
+  let rec lookup d k =
+    match d with
       | [] -> None
-      | (k1,v1)::d1 -> 
+      | (k1,v1)::d1 ->
         (match D.compare k k1 with
           | Eq -> Some v1
-          | Greater -> lookup d1 k 
+          | Greater -> lookup d1 k
           | _ -> None)
 
-  let member d k = 
-    match lookup d k with 
-      | None -> false 
+  let member d k =
+    match lookup d k with
+      | None -> false
       | Some _ -> true
 
-  let rec insert d k v = 
-    match d with 
+  let rec insert d k v =
+    match d with
       | [] -> [(k,v)]
-      | (k1,v1)::d1 -> 
-        (match D.compare k k1 with 
+      | (k1,v1)::d1 ->
+        (match D.compare k k1 with
           | Less -> (k,v)::d
           | Eq -> (k,v)::d1
           | Greater -> (k1,v1)::(insert d1 k v))
 
-  let rec remove d k = 
-    match d with 
+  let rec remove d k =
+    match d with
       | [] -> []
       | (k1,v1)::d1 ->
-	(match D.compare k k1 with 
+  (match D.compare k k1 with
           | Eq -> d1
           | Greater -> (k1,v1)::(remove d1 k)
           | _ -> d)
-	  
-  let choose d = 
-    match d with 
+
+  let choose d =
+    match d with
       | [] -> None
       | (k,v)::rest -> Some(k,v,rest)
 
   let string_of_key = D.string_of_key
   let string_of_value = D.string_of_value
-  let string_of_dict (d: dict) : string = 
-    let f = (fun y (k,v) -> y ^ "\n key: " ^ D.string_of_key k ^ 
+  let string_of_dict (d: dict) : string =
+    let f = (fun y (k,v) -> y ^ "\n key: " ^ D.string_of_key k ^
       "; value: (" ^ D.string_of_value v ^ ")") in
     List.fold_left f "" d
 
@@ -202,7 +207,7 @@ struct
   (****************************************************************)
 
   (* adds a list of (key,value) pairs in left-to-right order *)
-  let insert_list (d: dict) (lst: (key * value) list) : dict = 
+  let insert_list (d: dict) (lst: (key * value) list) : dict =
     List.fold_left (fun r (k,v) -> insert r k v) d lst
 
   (* adds a list of (key,value) pairs in right-to-left order *)
@@ -213,7 +218,7 @@ struct
   let generate_pair_list (size: int) : (key * value) list =
     let rec helper (size: int) (current: key) : (key * value) list =
       if size <= 0 then []
-      else 
+      else
         let new_current = D.gen_key_gt current () in
         (new_current, D.gen_value()) :: (helper (size - 1) new_current)
     in
@@ -222,7 +227,7 @@ struct
   (* generates a (key,value) list with keys in random order *)
   let rec generate_random_list (size: int) : (key * value) list =
     if size <= 0 then []
-    else 
+    else
       (D.gen_key_random(), D.gen_value()) :: (generate_random_list (size - 1))
 
   let test_insert () =
@@ -234,10 +239,10 @@ struct
   let test_remove () =
     let pairs1 = generate_pair_list 26 in
     let d1 = insert_list empty pairs1 in
-    List.iter 
-      (fun (k,v) -> 
+    List.iter
+      (fun (k,v) ->
         let r = remove d1 k in
-        List.iter 
+        List.iter
           (fun (k2,v2) ->
             if k = k2 then assert(lookup r k2 = None)
             else assert(lookup r k2 = Some v2)
@@ -257,7 +262,7 @@ struct
   let test_fold () =
     ()
 
-  let run_tests () = 
+  let run_tests () =
     test_insert() ;
     test_remove() ;
     test_lookup() ;
@@ -266,7 +271,7 @@ struct
     test_fold() ;
     ()
 
-end    
+end
 
 
 
@@ -274,13 +279,11 @@ end
 (* BTDict: a functor that implements our DICT signature           *)
 (* using a balanced tree (2-3 trees)                              *)
 (******************************************************************)
-(*
+
 module BTDict(D:DICT_ARG) : (DICT with type key = D.key
 with type value = D.value) =
 struct
   open Order
-
-  exception TODO
 
   type key = D.key
   type value = D.value
@@ -294,29 +297,29 @@ struct
 
   (* Type definition for dictionary, which we choose to represent as a 2-3 Tree.
    * This is almost the same as the binary search tree definition from pset4 and
-   * lecture, except we add one more case: a Three-node. 
+   * lecture, except we add one more case: a Three-node.
    *
-   * A Three-node contains two pairs and three subtrees: left, middle, and 
+   * A Three-node contains two pairs and three subtrees: left, middle, and
    * right, represented by the 3 dicts in the definition below. *)
-  type dict = 
+  type dict =
     | Leaf
     | Two of dict * pair * dict
     | Three of dict * pair * dict * pair * dict
 
-  (* INVARIANTS: 
-   * 2-node: Two(left,(k1,v1),right) 
+  (* INVARIANTS:
+   * 2-node: Two(left,(k1,v1),right)
    * (1) Every key k appearing in subtree left must be k < k1.
-   * (2) Every key k appearing in subtree right must be k > k1. 
+   * (2) Every key k appearing in subtree right must be k > k1.
    * (3) The length of the path from the 2-node to
-   *     every leaf in its two subtrees must be the same.  
-   * 
-   * 3-node: Three(left,(k1,v1),middle,(k2,v2),right) 
+   *     every leaf in its two subtrees must be the same.
+   *
+   * 3-node: Three(left,(k1,v1),middle,(k2,v2),right)
    * (1) k1 < k2.
-   * (2) Every key k appearing in subtree left must be k < k1. 
-   * (3) Every key k appearing in subtree right must be k > k2. 
+   * (2) Every key k appearing in subtree left must be k < k1.
+   * (3) Every key k appearing in subtree right must be k > k2.
    * (4) Every key k appearing in subtree middle must be k1 < k < k2.
-   * (5) The length of the path from the 3-node to every leaf in its three 
-   *     subtrees must be the same. 
+   * (5) The length of the path from the 3-node to every leaf in its three
+   *     subtrees must be the same.
    *)
 
   (* FOR INSERTION:
@@ -346,21 +349,31 @@ struct
     | Left3
     | Mid3
     | Right3
-        
+
   (* How do we represent an empty dictionary with 2-3 trees? *)
   let empty : dict = Leaf
 
   (* TODO:
    * Implement fold. Read the specification in the DICT signature above. *)
   let rec fold (f: key -> value -> 'a -> 'a) (u: 'a) (d: dict) : 'a =
-    raise TODO
+    match d with
+      Leaf -> u
+    | Two (lt,n,rt) -> (let k, v = n in
+                        let left = fold f (f k v u) lt in
+                        fold f left rt)
+    | Three (lt,ln,mt,rn,rt) -> (let lk, lv = ln in
+                                 let rk, rv = rn in
+                                 let left = fold f (f lk lv u) lt in
+                                 let middle = fold f left mt in
+                                 fold f (f rk rv middle) rt)
 
   (* TODO:
    * Implement these to-string functions *)
-  let string_of_key = raise TODO
-  let string_of_value = raise TODO
-  let string_of_dict (d: dict) : string = raise TODO
-      
+  let string_of_key = D.string_of_key
+  let string_of_value = D.string_of_value
+  let string_of_dict (d: dict) : string =
+    fold (fun k v s -> "("^(string_of_key k)^","^(string_of_value v)^")"^s) "" d
+
   (* Debugging function. This will print out the tree in text format.
    * Use this function to see the actual structure of your 2-3 tree. *
    *
@@ -375,93 +388,178 @@ struct
    *
    * Note that this tree is NOT balanced, because all the paths from (6,f)
    * to its leaves do NOT all have the same length. *)
-  let rec string_of_tree (d: dict) : string = 
+  let rec string_of_tree (d: dict) : string =
     match d with
       | Leaf -> "Leaf"
-      | Two(left,(k,v),right) -> "Two(" ^ (string_of_tree left) 
+      | Two(left,(k,v),right) -> "Two(" ^ (string_of_tree left)
         ^ ",(" ^ (string_of_key k) ^ "," ^ (string_of_value v) ^ "),"
         ^ (string_of_tree right) ^ ")"
-      | Three(left,(k1,v1),middle,(k2,v2),right) -> 
+      | Three(left,(k1,v1),middle,(k2,v2),right) ->
         "Three(" ^ (string_of_tree left)
         ^ ",(" ^ (string_of_key k1) ^ "," ^ (string_of_value v1) ^ "),"
-        ^ (string_of_tree middle) ^ ",(" ^ (string_of_key k2) ^ "," 
+        ^ (string_of_tree middle) ^ ",(" ^ (string_of_key k2) ^ ","
         ^ (string_of_value v2) ^ ")," ^ (string_of_tree right) ^ ")"
 
   (* Upward phase for w where its parent is a Two node whose (key,value) is x.
    * One of x's children is w, and the other child is x_other. This function
    * should return a kicked-up configuration containing the new tree as a
    * result of performing the upward phase on w. *)
-  let insert_upward_two (w: pair) (w_left: dict) (w_right: dict) 
-      (x: pair) (x_other: dict) : kicked = 
-    raise TODO
+  let insert_upward_two (w: pair) (w_left: dict) (w_right: dict)
+      (x: pair) (x_other: dict) : kicked =
+    let wk, wv = w in
+    let xk, xv = x in
+    match D.compare wk xk with
+      Less   ->
+      (match w_left with
+        Leaf -> Up(Two(Leaf,w,Leaf),x,x_other)
+      | _ -> Done(Three(w_left, w, w_right, x, x_other)))
+    | Greater ->
+      (match w_left with
+        Leaf -> Up(x_other,x,Two(Leaf,w,Leaf))
+      | _ -> Done(Three(x_other, x, w_left, w, w_right)))
+    | Eq      -> raise BAD_INSERT_UP_TWO
+
 
   (* Upward phase for w where its parent is a Three node whose (key,value) is x.
-   * One of x's children is w, and of the two remaining children, 
-   * other_left is the subtree more to the left and other_right is the 
-   * subtree more to the right. 
+   * One of x's children is w, and of the two remaining children,
+   * other_left is the subtree more to the left and other_right is the
+   * subtree more to the right.
    *
    * E.g. From our handout, for the first case where w's parent is a Three-tree,
    * other_left would be c and other_right would be d. For the second case,
    * other_left would be a and other_right would be d. For the third case,
-   * other_left would be a and other_right would be b. 
+   * other_left would be a and other_right would be b.
    *
-   * This function should return a kicked-up configuration containing the 
+   * This function should return a kicked-up configuration containing the
    * new tree as a result of performing the upward phase on w. *)
   let insert_upward_three (w: pair) (w_left: dict) (w_right: dict)
       (x: pair) (y: pair) (other_left: dict) (other_right: dict) : kicked =
-    raise TODO
+      let wk, wv = w in
+      let xk, xv = x in
+      let yk, yv = y in
+      match (D.compare wk xk, D.compare wk yk) with
+        (Less, Less)       -> Up(Two(w_left, w, w_right), x,
+                               Two(other_left, y, other_right))
+      | (Greater, Less)    -> Up(Two(other_left, x, w_left), w,
+                                    Two(w_right, y, other_right))
+      | (Greater, Greater) -> Up(Two(other_left, x, other_right), y,
+                                    Two(w_left, w, w_right))
+      | (_,_)              -> raise BAD_INSERT_UP_THREE
 
-  (* Downward phase for inserting (k,v) into our dictionary d. 
+
+  (* Downward phase for inserting (k,v) into our dictionary d.
    * The downward phase returns a "kicked" up configuration, where
-   * 
+   *
    * type kicked =
    *      | Up of dict * pair * dict
    *      | Done of dict
-   * 
+   *
    * A kicked up configuration can only be a Two node, hence the Up
    * constructor takes the same parameters as the Two constructor. We return
    * Up(left,(k,v),right) if the Two-node represented by this Up needs to
    * be further kicked up in the upward phase (this is represented by an up
    * arrow on the 2-3 Tree handout). We return Done(d) if we have finished
-   * our upward phase on the tree represented by d. 
+   * our upward phase on the tree represented by d.
    *
-   * The functions insert_downward, insert_downward_two, and 
-   * insert_downward_three are __mutually recursive__, hence the 
+   * The functions insert_downward, insert_downward_two, and
+   * insert_downward_three are __mutually recursive__, hence the
    * "let rec" and the "and" keywords. Here, we use three mutually recursive
    * functions to simplify our code into smaller pieces.
    *
-   * Two functions f and g are __mutually recursive__ if in f's definition, 
+   * Two functions f and g are __mutually recursive__ if in f's definition,
    * f calls g, and in g's definition, g calls f. This definition of
    * mutually recursive definitions can be extended to more than two functions,
-   * as follows: 
-   * 
+   * as follows:
+   *
    * Functions f1, f2, f3, ..., fn are mutually recursive if for each of
-   * these functions f, all of the other f_i's can be called on some execution 
+   * these functions f, all of the other f_i's can be called on some execution
    * of f. *)
 
   (* insert_downward should handle the base case when inserting into a Leaf,
-   * and if our dictionary d is a Two-node or a Three-node, we call the 
+   * and if our dictionary d is a Two-node or a Three-node, we call the
    * corresponding functions insert_downward_two or insert_downward_three
    * with the appropriate arguments. *)
   let rec insert_downward (d: dict) (k: key) (v: value) : kicked =
     match d with
-      | Leaf -> raise TODO (* base case! see handout *)
-      | Two(left,n,right) -> raise TODO (* mutual recursion *)
-      | Three(left,n1,middle,n2,right) -> raise TODO (* mutual recursion *)
+        Leaf -> Done(Two(Leaf,(k,v),Leaf))
+      | Two(Leaf,(k1,v1),Leaf) ->
+        (match D.compare k k1 with
+          Eq   -> Done(Two(Leaf,(k,v),Leaf))
+        | Less -> Done(Three(Leaf,(k,v),Leaf,(k1,v1),Leaf))
+        | Greater -> Done(Three(Leaf,(k1,v1),Leaf,(k,v),Leaf)))
+      | Three(Leaf,(k1,v1),Leaf,(k2,v2),Leaf) ->
+        (match (D.compare k k1, D.compare k k2) with
+          (Eq, Less) -> Done(Three(Leaf,(k,v),Leaf,(k2,v2),Leaf))
+        | (Greater, Eq) -> Done(Three(Leaf,(k1,v1),Leaf,(k,v),Leaf))
+        | (Less, Less) -> Up(Two(Leaf,(k,v),Leaf),(k1,v1),
+                                  Two(Leaf,(k2,v2),Leaf))
+        | (Greater, Less) -> Up(Two(Leaf,(k1,v1),Leaf),(k,v),
+                                  Two(Leaf,(k2,v2),Leaf))
+        | (Greater, Greater) -> Up(Two(Leaf,(k1,v1),Leaf),(k2,v2),
+                                  Two(Leaf,(k,v),Leaf))
+        | (_,_) -> raise BAD_INSERT_DOWN)
+      | Two(left,n,right) -> insert_downward_two (k,v) n left right
+      | Three(left,n1,middle,n2,right) -> insert_downward_three (k,v) n1 n2
+                                          left middle right
 
   (* Downward phase on a Two node. (k,v) is the (key,value) we are inserting,
    * (k1,v1) is the (key,value) of the current Two node, and left and right
    * are the two subtrees of the current Two node. *)
-  and insert_downward_two ((k,v): pair) ((k1,v1): pair) 
-      (left: dict) (right: dict) : kicked = 
-    raise TODO
+  and insert_downward_two ((k,v): pair) ((k1,v1): pair)
+      (left: dict) (right: dict) : kicked =
+    match D.compare k k1 with
+      Eq      -> Done(Two(left,(k,v),right))
+    | Less    ->
+      (match left with
+        Leaf -> insert_upward_two (k,v) Leaf Leaf (k1,v1) right
+      | _ ->
+        match insert_downward left k v with
+          Done d -> Done(Two(d,(k1,v1),right))
+        | Up (l,n,r) -> insert_upward_two n l r (k1,v1) right)
+    | Greater ->
+      (match right with
+        Leaf -> insert_upward_two (k,v) Leaf Leaf (k1,v1) left
+      | _ ->
+        match insert_downward right k v with
+          Done d -> Done(Two(left,(k1,v1),d))
+        | Up (l,n,r) -> insert_upward_two n l r (k1,v1) left)
 
   (* Downward phase on a Three node. (k,v) is the (key,value) we are inserting,
    * (k1,v1) and (k2,v2) are the two (key,value) pairs in our Three node, and
    * left, middle, and right are the three subtrees of our current Three node *)
-  and insert_downward_three ((k,v): pair) ((k1,v1): pair) ((k2,v2): pair) 
+  and insert_downward_three ((k,v): pair) ((k1,v1): pair) ((k2,v2): pair)
       (left: dict) (middle: dict) (right: dict) : kicked =
-    raise TODO
+      match (D.compare k k1, D.compare k k2) with
+        (Eq, Less)         -> Done (Three(left, (k,v), middle, (k2,v2), right))
+      | (Greater, Eq)      -> Done (Three(left, (k1,v1), middle, (k,v), right))
+      | (Less, Less)       ->
+        (match left with
+          Leaf -> insert_upward_three (k,v) Leaf Leaf
+                  (k1,v1) (k2,v2) middle right
+        | _ ->
+          match insert_downward left k v with
+            Done d -> Done(Three(d,(k1,v1),middle,(k2,v2),right))
+          | Up (l,n,r) -> insert_upward_three n l r
+                          (k1,v1) (k2,v2) middle right)
+      | (Greater, Less)    ->
+        (match middle with
+          Leaf -> insert_upward_three (k,v) Leaf Leaf
+                  (k1,v1) (k2,v2) left right
+        | _ ->
+          match insert_downward middle k v with
+            Done d -> Done(Three(left,(k1,v1),d,(k2,v2),right))
+          | Up (l,n,r) -> insert_upward_three n l r
+                          (k1,v1) (k2,v2) left right)
+      | (Greater, Greater) ->
+        (match right with
+          Leaf -> insert_upward_three (k,v) Leaf Leaf
+                  (k1,v1) (k2,v2) left middle
+        | _ ->
+          match insert_downward right k v with
+            Done d -> Done(Three(left,(k1,v1),middle,(k2,v2),d))
+          | Up (l,n,r) -> insert_upward_three n l r
+                          (k1,v1) (k2,v2) left middle)
+      | (_, _)  -> raise BAD_INSERT_DOWN_THREE
 
   (* We insert (k,v) into our dict using insert_downward, which gives us
    * "kicked" up configuration. We return the tree contained in the "kicked"
@@ -471,18 +569,18 @@ struct
       | Up(l,(k1,v1),r) -> Two(l,(k1,v1),r)
       | Done x -> x
 
-  (* Upward phase for removal where the parent of the hole is a Two node. 
+  (* Upward phase for removal where the parent of the hole is a Two node.
    * See cases (1-2) on the handout. n is the (key,value) pair contained in
    * the parent node; left and right are the subtrees of the parent node (our
    * hole is one of these subtrees); and dir indicates which subtree was
    * contained by the hole. *)
-  let remove_upward_two (n: pair) (rem: pair option) 
+  let remove_upward_two (n: pair) (rem: pair option)
       (left: dict) (right: dict) (dir: direction2) : hole =
     match dir,n,left,right with
       | Left2,x,l,Two(m,y,r) -> Hole(rem,Three(l,x,m,y,r))
-      | Right2,y,Two(l,x,m),r -> raise TODO
-      | Left2,x,a,Three(b,y,c,z,d) -> raise TODO
-      | Right2,z,Three(a,x,b,y,c),d -> raise TODO
+      | Right2,y,Two(l,x,m),r -> Hole(rem,Three(l,x,m,y,r))
+      | Left2,x,a,Three(b,y,c,z,d) -> Absorbed(rem,Two(Two(a,x,b),y,Two(c,z,d)))
+      | Right2,z,Three(a,x,b,y,c),d-> Absorbed(rem,Two(Two(a,x,b),y,Two(c,z,d)))
       | Left2,_,_,_ | Right2,_,_,_ -> Absorbed(rem,Two(Leaf,n,Leaf))
 
   (* Upward phase for removal where the parent of the hole is a Three node.
@@ -494,13 +592,17 @@ struct
       (left: dict) (middle: dict) (right: dict) (dir: direction3) : hole =
     match dir,n1,n2,left,middle,right with
       | Left3,x,z,a,Two(b,y,c),d -> Absorbed(rem,Two(Three(a,x,b,y,c),z,d))
-      | Mid3,y,z,Two(a,x,b),c,d -> raise TODO
-      | Mid3,x,y,a,b,Two(c,z,d) -> raise TODO
-      | Right3,x,z,a,Two(b,y,c),d -> raise TODO
-      | Left3,w,z,a,Three(b,x,c,y,d),e -> raise TODO
-      | Mid3,y,z,Three(a,w,b,x,c),d,e -> raise TODO
-      | Mid3,w,x,a,b,Three(c,y,d,z,e) -> raise TODO
-      | Right3,w,z,a,Three(b,x,c,y,d),e -> raise TODO
+      | Mid3,y,z,Two(a,x,b),c,d -> Absorbed(rem,Two(Three(a,x,b,y,c),z,d))
+      | Mid3,x,y,a,b,Two(c,z,d) -> Absorbed(rem,Two(a,x,Three(b,y,c,z,d)))
+      | Right3,x,z,a,Two(b,y,c),d -> Absorbed(rem,Two(a,x,Three(b,y,c,z,d)))
+      | Left3,w,z,a,Three(b,x,c,y,d),e -> Absorbed(rem,
+                                          Three(Two(a,w,b),x,Two(c,y,d),z,e))
+      | Mid3,y,z,Three(a,w,b,x,c),d,e -> Absorbed(rem,
+                                          Three(Two(a,w,b),x,Two(c,y,d),z,e))
+      | Mid3,w,x,a,b,Three(c,y,d,z,e) -> Absorbed(rem,
+                                          Three(a,w,Two(b,x,c),y,Two(d,z,e)))
+      | Right3,w,z,a,Three(b,x,c,y,d),e -> Absorbed(rem,
+                                          Three(a,w,Two(b,x,c),y,Two(d,z,e)))
       | Left3,_,_,_,_,_ | Mid3,_,_,_,_,_ | Right3,_,_,_,_,_ ->
         Absorbed(rem,Three(Leaf,n1,Leaf,n2,Leaf))
 
@@ -523,18 +625,18 @@ struct
       | Three(l,n1,m,n2,r) -> remove_downward_three k n1 n2 l m r
 
   (* DO NOT EDIT THIS *)
-  and remove_downward_two (k: key) ((k1,v1): pair) 
+  and remove_downward_two (k: key) ((k1,v1): pair)
       (left: dict) (right: dict) : hole =
     match D.compare k k1 with
       | Eq ->
         (match remove_min right with
           | Hole(None,_) -> Hole(None,left)
-          | Hole(Some n,new_right) -> 
+          | Hole(Some n,new_right) ->
             remove_upward_two n None left new_right Right2
           | Absorbed(None,_) -> Hole(None,left)
           | Absorbed(Some n,new_right) -> Absorbed(None,Two(left,n,new_right))
         )
-      | Less -> 
+      | Less ->
         (match remove_downward left k with
           | Hole(rem,t) -> remove_upward_two (k1,v1) rem t right Left2
           | Absorbed(rem,t) -> Absorbed(rem,Two(t,(k1,v1),right))
@@ -552,40 +654,40 @@ struct
       | Eq, _ ->
         (match remove_min middle with
           | Hole(None,_) -> Hole(None,Two(left,(k2,v2),right))
-          | Hole(Some n,new_middle) -> 
+          | Hole(Some n,new_middle) ->
             remove_upward_three n (k2,v2) None left new_middle right Mid3
           | Absorbed(None,_) -> Absorbed(None,Two(left,(k1,v1),right))
-          | Absorbed(Some n,new_middle) -> 
+          | Absorbed(Some n,new_middle) ->
             Absorbed(None,Three(left,n,new_middle,(k2,v2),right))
         )
       | _ , Eq ->
         (match remove_min right with
           | Hole(None,_) -> Hole(None,Two(left,(k1,v1),middle))
-          | Hole(Some n,new_right) -> 
+          | Hole(Some n,new_right) ->
             remove_upward_three (k1,v1) n None left middle new_right Right3
           | Absorbed(None,_) -> Absorbed(None,Two(left,(k1,v1),middle))
-          | Absorbed(Some n,new_right) -> 
+          | Absorbed(Some n,new_right) ->
             Absorbed(None,Three(left,(k1,v1),middle,n,new_right))
         )
       | Less, _ ->
         (match remove_downward left k with
-          | Hole(rem,t) -> 
+          | Hole(rem,t) ->
             remove_upward_three (k1,v1) (k2,v2) rem t middle right Left3
-          | Absorbed(rem,t) -> 
+          | Absorbed(rem,t) ->
             Absorbed(rem,Three(t,(k1,v1),middle,(k2,v2),right))
         )
       | _, Greater ->
         (match remove_downward right k with
-          | Hole(rem,t) -> 
+          | Hole(rem,t) ->
             remove_upward_three (k1,v1) (k2,v2) rem left middle t Right3
-          | Absorbed(rem,t) -> 
+          | Absorbed(rem,t) ->
             Absorbed(rem,Three(left,(k1,v1),middle,(k2,v2),t))
         )
       | Greater, Less ->
         (match remove_downward middle k with
-          | Hole(rem,t) -> 
+          | Hole(rem,t) ->
             remove_upward_three (k1,v1) (k2,v2) rem left t right Mid3
-          | Absorbed(rem,t) -> 
+          | Absorbed(rem,t) ->
             Absorbed(rem,Three(left,(k1,v1),t,(k2,v2),right))
         )
 
@@ -595,7 +697,7 @@ struct
       | Leaf -> Hole(None,Leaf)
       | Two(Leaf,n,_) -> Hole(Some n,Leaf)
       | Three(Leaf,n1,middle,n2,right) -> Absorbed(Some n1,Two(middle,n2,right))
-      | Two(left,n,right) -> 
+      | Two(left,n,right) ->
         (match remove_min left with
           | Hole(rem,t) -> remove_upward_two n rem t right Left2
           | Absorbed(rem,t) -> Absorbed(rem,Two(t,n,right))
@@ -617,33 +719,76 @@ struct
    * in our dictionary and returns it as an option, or return None
    * if the key is not in our dictionary. *)
   let rec lookup (d: dict) (k: key) : value option =
-    raise TODO
+  match d with
+    Leaf -> None
+  |  Two (left, (k1,v1), right) ->
+    (match D.compare k k1 with
+        Eq -> Some v1
+      | Less -> lookup left k
+      | Greater -> lookup right k)
+  | Three (left, (k1,v1), middle, (k2, v2), right) ->
+    (match (D.compare k k1, D.compare k k2) with
+         (Eq, _) -> Some v1
+      | (_, Eq)  -> Some v2
+      |  (Less, Less) -> lookup left k
+      |  (Greater, Less) -> lookup middle k
+      |  (_, Greater) -> lookup right k)
 
   (* TODO:
    * Write a function to test if a given key is in our dictionary *)
-  let member (d: dict) (k: key) : bool =
-    raise TODO
+  let rec member (d: dict) (k: key) : bool =
+    match d with
+      Leaf -> false
+    |  Two (left, (k1,v1), right) ->
+      (match D.compare k k1 with
+          Eq -> true
+        | Less -> member left k
+        | Greater -> member right k)
+    | Three (left, (k1,v1), middle, (k2, v2), right) ->
+      (match (D.compare k k1, D.compare k k2) with
+           (Eq, _) | (_, Eq)-> true
+        |  (Less, Less) -> member left k
+        |  (Greater, Less) -> member middle k
+        |  (_, Greater) -> member right k)
 
   (* TODO:
-   * Write a function that removes any (key,value) pair from our 
+   * Write a function that removes any (key,value) pair from our
    * dictionary (your choice on which one to remove), and returns
-   * as an option this (key,value) pair along with the new dictionary. 
+   * as an option this (key,value) pair along with the new dictionary.
    * If our dictionary is empty, this should return None. *)
   let choose (d: dict) : (key * value * dict) option =
-    raise TODO
+    match d with
+      Leaf -> None
+    | Two (l,(k,v),r) -> Some (k, v, remove d k)
+    | Three (l,(k1,v1),m,(k2,v2),r) -> Some (k1, v1, remove d k1)
 
   (* TODO:
    * Write a function that when given a 2-3 tree (represented by our
-   * dictionary d), returns true if and only if the tree is "balanced", 
+   * dictionary d), returns true if and only if the tree is "balanced",
    * where balanced means that the given tree satisfies the 2-3 tree
    * invariants stated above and in the 2-3 tree handout. *)
 
-  (* How are you testing that you tree is balanced? 
-   * ANSWER: 
-   *    _______________
+  (* How are you testing that you tree is balanced?
+   * ANSWER:
+   *    By checking that path-length invariant that the left and right subtrees
+   *    of each node are the same.
    *)
   let rec balanced (d: dict) : bool =
-    raise TODO
+  (* auxiliary function to keep track of lowest and highest leaves *)
+    let rec aux (d:dict) (h:int) (low_high:int*int) : int*int =
+      let low, high = low_high in
+      match d with
+        Leaf ->
+        (match (h < low, h > high) with
+          (true, true) -> (h, h)
+        | (true, false) -> (h, high)
+        | (false, true) -> (low, h)
+        | (_, _) -> low_high)
+      | Two (l,x,r)-> aux r (h+1) (aux l (h+1) low_high)
+      | Three (l,x,m,y,r) -> aux r (h+1) (aux m (h+1) (aux l (h+1) low_high))
+    in
+    let low, high = aux d 1 (max_int, -1) in
+    low = high
 
 
   (********************************************************************)
@@ -653,7 +798,7 @@ struct
   (********************************************************************)
 
   (* adds a list of (key,value) pairs in left-to-right order *)
-  let insert_list (d: dict) (lst: (key * value) list) : dict = 
+  let insert_list (d: dict) (lst: (key * value) list) : dict =
     List.fold_left (fun r (k,v) -> insert r k v) d lst
 
   (* adds a list of (key,value) pairs in right-to-left order *)
@@ -664,7 +809,7 @@ struct
   let generate_pair_list (size: int) : (key * value) list =
     let rec helper (size: int) (current: key) : (key * value) list =
       if size <= 0 then []
-      else 
+      else
         let new_current = D.gen_key_gt current () in
         (new_current, D.gen_value()) :: (helper (size - 1) new_current)
     in
@@ -673,10 +818,10 @@ struct
   (* generates a (key,value) list with keys in random order *)
   let rec generate_random_list (size: int) : (key * value) list =
     if size <= 0 then []
-    else 
+    else
       (D.gen_key_random(), D.gen_value()) :: (generate_random_list (size - 1))
 
-(*
+
   let test_balance () =
     let d1 = Leaf in
     assert(balanced d1) ;
@@ -716,9 +861,42 @@ struct
                    D.gen_pair(),Leaf,D.gen_pair(),Two(Leaf,D.gen_pair(),Leaf))
     in
     assert(not (balanced d7)) ;
-    () *)
+    ()
 
-(*
+  let test_insert () =
+    let pairs1 = generate_pair_list 26 in
+    let d1 = insert_list empty pairs1 in
+    List.iter (fun (k,v) -> assert(lookup d1 k = Some v)) pairs1 ;
+    ()
+
+  (* test that choose removes 1 element from the tree and eventually empties
+     the tree *)
+  let test_choose () =
+    let pairs1 = generate_pair_list 26 in
+    let d1 = insert_list empty pairs1 in
+    (fun x -> ())
+    (fold (fun k v d ->
+      match choose d1 with
+        None -> assert(d = empty); d
+      | Some (k1,v1,d) -> assert(List.mem (k1,v1) pairs1);
+                          assert(balanced d) ; d
+      ) d1 d1)
+
+  (* test that fold goes through every element of the tree *)
+  let test_fold () =
+    let pairs1 = generate_pair_list 26 in
+    let d1 = insert_list empty pairs1 in
+    let treelist = fold (fun k v l -> (k,v) :: l) [] d1 in
+    List.iter (fun n -> assert(List.mem n treelist)) pairs1 ;
+    ()
+
+  (* test that member and List.mem agree *)
+  let test_member () =
+    let pairs1 = generate_pair_list 26 in
+    let d1 = insert_list empty pairs1 in
+    (fun x -> ())
+    (fold (fun k v i -> assert((member d1 k) = List.mem (k,v) pairs1); 0) 0 d1)
+
   let test_remove_nothing () =
     let pairs1 = generate_pair_list 26 in
     let d1 = insert_list empty pairs1 in
@@ -737,10 +915,10 @@ struct
   let test_remove_in_order () =
     let pairs1 = generate_pair_list 26 in
     let d1 = insert_list empty pairs1 in
-    List.iter 
-      (fun (k,v) -> 
+    List.iter
+      (fun (k,v) ->
         let r = remove d1 k in
-        let _ = List.iter 
+        let _ = List.iter
           (fun (k2,v2) ->
             if k = k2 then assert(lookup r k2 = None)
             else assert(lookup r k2 = Some v2)
@@ -752,10 +930,10 @@ struct
   let test_remove_reverse_order () =
     let pairs1 = generate_pair_list 26 in
     let d1 = insert_list_reversed empty pairs1 in
-    List.iter 
-      (fun (k,v) -> 
+    List.iter
+      (fun (k,v) ->
         let r = remove d1 k in
-        let _ = List.iter 
+        let _ = List.iter
           (fun (k2,v2) ->
             if k = k2 then assert(lookup r k2 = None)
             else assert(lookup r k2 = Some v2)
@@ -771,40 +949,42 @@ struct
     List.iter (fun (k,_) -> assert(not (member r5 k))) pairs5 ;
     assert(r5 = empty) ;
     assert(balanced r5) ;
-    () *)
+    ()
 
-  let run_tests () = 
-(*    test_balance() ; *)
-(*    test_remove_nothing() ;
+  let run_tests () =
+    test_balance() ;
+    test_insert() ;
+    test_choose() ;
+    test_member() ;
+    test_fold() ;
+    test_remove_nothing() ;
     test_remove_from_nothing() ;
     test_remove_in_order() ;
     test_remove_reverse_order() ;
-    test_remove_random_order() ; *)
+    test_remove_random_order() ;
     ()
 
 end
-*)
-
 
 
 (******************************************************************)
 (* Run our tests.                                                 *)
 (******************************************************************)
 
-(* Create a dictionary mapping ints to strings using our 
+(* Create a dictionary mapping ints to strings using our
  * AssocListDict functor and run the tests *)
 module IntStringListDict = AssocListDict(IntStringDictArg) ;;
 IntStringListDict.run_tests();;
 
-(* Create a dictionary mapping ints to strings using our 
+(* Create a dictionary mapping ints to strings using our
  * BTDict functor and run the tests.
- * 
+ *
  * Uncomment out the lines below when you are ready to test your
  * 2-3 tree implementation. *)
-(*
+
 module IntStringBTDict = BTDict(IntStringDictArg) ;;
 IntStringBTDict.run_tests();;
-*)
+
 
 
 
@@ -813,9 +993,8 @@ IntStringBTDict.run_tests();;
 (* AssocListDict or BTDict functors                               *)
 (******************************************************************)
 module Make (D:DICT_ARG) : (DICT with type key = D.key
-  with type value = D.value) = 
+  with type value = D.value) =
   (* Change this line to the BTDict implementation when you are
    * done implementing your 2-3 trees. *)
-  AssocListDict(D)
-  (* BTDict(D) *)
-
+  (* AssocListDict(D) *)
+  BTDict(D)
